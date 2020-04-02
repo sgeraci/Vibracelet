@@ -107,7 +107,7 @@ bool DefaultBusInit( void ) {
 #define GPIO_OUTPUT_VIBRATE		23
 #define GPIO_INPUT_SNOOZE		18
 #define SAMPLE_RATE     		(44100)
-#define NSAMPLES 				((1/100) * SAMPLE_RATE) 			//10-ms
+#define NSAMPLES 				((1/10) * SAMPLE_RATE) 			//100-ms
 #define WAVE_FREQ_HZ    		(100)
 #define PI              		(3.14159265)
 #define I2S_BCK_IO      		25
@@ -127,7 +127,7 @@ TaskHandle_t record_handle = NULL;
 TaskHandle_t trig_handle = NULL;
 
 
-// uint16_t data16[NSAMPLES];
+//uint16_t data16[NSAMPLES];
 
 static void IRAM_ATTR snooze_isr_handler(void* arg)
 {
@@ -161,28 +161,28 @@ void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text ) {
 static void listen(void * arg)
 {
 	uint32_t data32;
-	uint16_t data_tmp[441];
+	uint16_t data_tmp[1000];
 	size_t bytes_read;
 	int n = 0;
 	for(;;) {
-		putc(uxTaskGetStackHighWaterMark(listen_handle), stdout);
-		putc('\n', stdout);
-		putc('\r', stdout);
+//		printf("%d\r\n",uxTaskGetStackHighWaterMark(listen_handle));
 		esp_task_wdt_reset();
 		i2s_read(I2S_NUM_0, &data32, sizeof(data32), &bytes_read, 0);		//24-bit stored into 32-bit variable
-		data32 = (data32 >> 14);											//invert
-		data32 = ~data32 & ~0xFFFC0000;										//make the msbs zero after inverting
-		data32 = data32 + 1;
-		data32 = data32 >> 2;
+		//data32 = (data32 >> 14);											//invert
+		//data32 = ~data32 & ~0xFFFC0000;										//make the msbs zero after inverting
+		//data32 = data32 + 1;
+		//TAKING OUT TO SEE IF THIS FIXES THE ISSUE WITH THE OUTPUT FOR MIC DATA
+		//data32 = data32 >> 2;
 		//data16[n] = (uint16_t *) data32;
-		data_tmp[n] =(uint16_t *) data32;
+		//data_tmp[n] = (uint16_t *) (data32 / 4);
+		data_tmp[n] = (uint16_t *) (data32 >> 16);// >> 16);
+		
+		
+		//data_tmp[n] =(uint16_t *) data32;
 		n++; 
-		if(n == 441)	{
-			for(int i = 0; i < 441; i++) {
-				putc(data_tmp[n], stdout);
-				putc('\n', stdout);
-				putc('\r', stdout);
-				//printf("%x", data_tmp[i]);
+		if(n == 1000)	{
+			for(int i = 0; i < 1000; i++) {
+				printf("%d\r\n", data_tmp[i]);
 			}
 			n = 0;
 		}
@@ -325,7 +325,7 @@ void app_main(void)
 	//test i2s
 	//bool trigger = 0;
 
-	xTaskCreate(listen, "listen", 1024, NULL, tskIDLE_PRIORITY, &listen_handle);
+	xTaskCreate(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle);
 	xTaskCreate(snooze, "snooze", 1024, NULL, 1, &snooze_handle);
 	xTaskCreate(record, "record", 1024, NULL, 3, &record_handle);
 	xTaskCreate(trigger, "trigger", 1024, NULL, 2, &trig_handle);
