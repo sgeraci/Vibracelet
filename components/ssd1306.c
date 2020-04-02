@@ -250,20 +250,3 @@ bool SSD1306_Init_I2C( struct SSD1306_Device* DeviceHandle, int Width, int Heigh
     
     return SSD1306_Init( DeviceHandle, Width, Height );
 }
-
-bool SSD1306_Init_SPI( struct SSD1306_Device* DeviceHandle, int Width, int Height, int ResetPin, int CSPin, spi_device_handle_t SPIHandle, WriteCommandProc WriteCommand, WriteDataProc WriteData, ResetProc Reset ) {
-    NullCheck( DeviceHandle, return false );
-    NullCheck( WriteCommand, return false );
-    NullCheck( WriteData, return false );
-
-    memset( DeviceHandle, 0, sizeof( struct SSD1306_Device ) );
-
-    DeviceHandle->WriteCommand = WriteCommand;
-    DeviceHandle->WriteData = WriteData;
-    DeviceHandle->Reset = Reset;
-    DeviceHandle->SPIHandle = SPIHandle;
-    DeviceHandle->RSTPin = ResetPin;
-    DeviceHandle->CSPin = CSPin;
-
-    return SSD1306_Init( DeviceHandle, Width, Height );
-}

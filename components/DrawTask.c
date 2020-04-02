@@ -26,6 +26,4 @@ void ScreenSetup( struct SSD1306_Device* DisplayHandle, const struct SSD1306_Fon
 void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text ) {
     SSD1306_FontDrawAnchoredString( DisplayHandle, TextAnchor_Center, Text, SSD_COLOR_WHITE );
     SSD1306_Update( DisplayHandle );
-    printf( "HERE\n" );
-
 }
