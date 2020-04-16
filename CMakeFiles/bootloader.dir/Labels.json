@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/buzz/Vibracelet/CMakeFiles/bootloader"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/CMakeFiles/bootloader.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/CMakeFiles/bootloader-complete.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule"
+		},
+		{
+			"file" : "/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"bootloader"
+		],
+		"name" : "bootloader"
+	}
+}

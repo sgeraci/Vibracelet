@@ -79,7 +79,6 @@
 
 #define USE_I2C_DISPLAY
 #if defined USE_I2C_DISPLAY
-    //WROTE these first so that if the defaults establsihed in the #if use i2c are impacting your code we can overwrite those assignments in the next part of the code
     static const int I2CDisplayAddress = 0x3C;    
 	static const int I2CDisplayWidth = 128;
     static const int I2CDisplayHeight = 32;
@@ -98,8 +97,8 @@ bool DefaultBusInit( void ) {
 }
 
 // TEST MACROS ****************//
-#define GPIO_INPUT_REC 			5
-#define GPIO_INPUT_TRIG			17
+#define GPIO_INPUT_TRIG 		5
+#define GPIO_INPUT_REC			17
 #define GPIO_INPUT_PINS 		(1ULL << GPIO_INPUT_REC) | (1ULL << GPIO_INPUT_TRIG)
 //*****************************//
 
@@ -110,8 +109,8 @@ bool DefaultBusInit( void ) {
 #define NSAMPLES 				((1/10) * SAMPLE_RATE) 			//100-ms
 #define WAVE_FREQ_HZ    		(100)
 #define PI              		(3.14159265)
-#define I2S_BCK_IO      		25
-#define I2S_WS_IO       		32
+#define I2S_BCK_IO      		32
+#define I2S_WS_IO       		25
 #define I2S_DI_IO      			33
 #define I2S_DO_IO       		(-1)
 #define SAMPLE_PER_CYCLE 		(SAMPLE_RATE/WAVE_FREQ_HZ)
@@ -120,14 +119,20 @@ static xQueueHandle snooze_evt_queue = NULL;
 static xQueueHandle rec_evt_queue = NULL;
 static xQueueHandle trig_evt_queue = NULL;
 static xQueueHandle i2s_queue = NULL;
+static xQueueHandle dsproc_queue = NULL;
+
 
 TaskHandle_t listen_handle = NULL;
 TaskHandle_t snooze_handle = NULL;
 TaskHandle_t record_handle = NULL;
 TaskHandle_t trig_handle = NULL;
+TaskHandle_t dsproc_handle = NULL;
+
+int16_t data16[NSAMPLES];
+int16_t basisSignalsReal[NSAMPLES][5];
+int16_t basisSignalsImag[NSAMPLES][5];
 
 
-//uint16_t data16[NSAMPLES];
 
 static void IRAM_ATTR snooze_isr_handler(void* arg)
 {
@@ -148,6 +153,9 @@ static void IRAM_ATTR trig_isr_handler(void* arg)
 
 }
 
+
+
+
 void ScreenSetup( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font ) {
   SSD1306_Clear( DisplayHandle, SSD_COLOR_BLACK );
   SSD1306_SetFont( DisplayHandle, Font );
@@ -158,38 +166,60 @@ void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text ) {
 
 }
 
+
+
+
+
+
 static void listen(void * arg)
 {
-	uint32_t data32;
-	uint16_t data_tmp[1000];
+	int32_t data32;
 	size_t bytes_read;
 	int n = 0;
+	esp_task_wdt_add(NULL);
 	for(;;) {
-//		printf("%d\r\n",uxTaskGetStackHighWaterMark(listen_handle));
 		esp_task_wdt_reset();
 		i2s_read(I2S_NUM_0, &data32, sizeof(data32), &bytes_read, 0);		//24-bit stored into 32-bit variable
+
+		
 		//data32 = (data32 >> 14);											//invert
 		//data32 = ~data32 & ~0xFFFC0000;										//make the msbs zero after inverting
 		//data32 = data32 + 1;
 		//TAKING OUT TO SEE IF THIS FIXES THE ISSUE WITH THE OUTPUT FOR MIC DATA
 		//data32 = data32 >> 2;
 		//data16[n] = (uint16_t *) data32;
-		//data_tmp[n] = (uint16_t *) (data32 / 4);
-		data_tmp[n] = (uint16_t *) (data32 >> 16);// >> 16);
 		
 		
-		//data_tmp[n] =(uint16_t *) data32;
-		n++; 
-		if(n == 1000)	{
-			for(int i = 0; i < 1000; i++) {
-				printf("%d\r\n", data_tmp[i]);
-			}
+		data16[n] = (int16_t) (data32 >> 16);// >> 16);
+		n++;
+		
+		
+		if(n > NSAMPLES)
+		{	
+//			printf("Passing to dsp: %d\r\n", data16[0]);
+//			xTaskNotify(dsproc_handle, 0, eNoAction);
 			n = 0;
+			
+			for(int i = 0; i < NSAMPLES; i++)
+			{
+				
+				uint32_t real = 0;
+				uint32_t imag = 0;
+				for(int j = 0; j < NSAMPLES; j++)
+				{
+					real += data16[j] * cos(2 * i * j * PI / NSAMPLES);
+					imag -= data16[j] * sin(2 * i * j * PI / NSAMPLES);
+				}
+			basisSignalsReal[i][0] = real / NSAMPLES;
+			basisSignalsImag[i][0] = imag / NSAMPLES;
+			printf("Working? %d\r\n", basisSignalsReal[i][0]);
+			}
 		}
-		
+			
 	}
-	
 }
+
+
 
 static void snooze(void * arg)
 {
@@ -214,7 +244,6 @@ static void record(void * arg)
 		SSD1306_Clear(&I2CDisplay, SSD_COLOR_BLACK);
 		SSD1306_Update(&I2CDisplay);
 		DrawText(&I2CDisplay, "Recording");
-
 		printf("record button pressed...\r\n");
 	}
 }
@@ -229,8 +258,40 @@ static void trigger(void * arg)
 		SSD1306_Update(&I2CDisplay);
 		DrawText(&I2CDisplay, "Triggered");
 		gpio_set_level(GPIO_OUTPUT_VIBRATE, 1);							//turn on vibrate
-
+		
 	}
+}
+
+static void dsproc(void * arg)
+{	
+	esp_task_wdt_add(NULL);
+	uint32_t io_num;
+	int32_t dataCopy[NSAMPLES];
+	for(;;) 
+	{
+		ulTaskNotifyTake(pdFALSE, 1);
+		esp_task_wdt_reset();
+		memcpy(dataCopy, data16, sizeof(data16));
+		
+/*
+		for(int i = 0; i < NSAMPLES; i++)
+		{
+			
+			uint32_t real = 0;
+			uint32_t imag = 0;
+			for(int j = 0; j < NSAMPLES; j++)
+			{
+				real += dataCopy[j] * cos(2 * i * j * PI / NSAMPLES);
+				imag -= dataCopy[j] * sin(2 * i * j * PI / NSAMPLES);
+			}
+		basisSignalsReal[i][0] = real;
+		basisSignalsImag[i][0] = imag;
+		}
+*/
+		
+		
+	}
+	
 }
 
 static void setup(void)
@@ -314,6 +375,10 @@ static void setup(void)
 			DrawText( &I2CDisplay, text);
 		#endif
 	}
+	
+//	dsproc_queue = xQueueCreate(5, sizeof(uint32_t));
+
+	
 }
 
 
@@ -321,22 +386,14 @@ static void setup(void)
 void app_main(void)
 {
 	setup();
-
-	//test i2s
-	//bool trigger = 0;
-
+//	xTaskCreatePinnedToCore(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle, 0);
 	xTaskCreate(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle);
+
 	xTaskCreate(snooze, "snooze", 1024, NULL, 1, &snooze_handle);
 	xTaskCreate(record, "record", 1024, NULL, 3, &record_handle);
 	xTaskCreate(trigger, "trigger", 1024, NULL, 2, &trig_handle);
-	
+//	xTaskCreatePinnedToCore(dsproc, "dsproc", 2048, NULL, tskIDLE_PRIORITY, &dsproc_handle, 1);
 
-
-	esp_task_wdt_add(listen_handle);
-
-	//test motor
-	int cnt = 0;
-	gpio_set_level(GPIO_OUTPUT_VIBRATE, 1);									//turn off vibrate
 }
 
 

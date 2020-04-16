@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/home/buzz/Vibracelet/CMakeFiles/bootloader
+/home/buzz/Vibracelet/CMakeFiles/bootloader.rule
+/home/buzz/Vibracelet/CMakeFiles/bootloader-complete.rule
+/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
+/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/home/buzz/Vibracelet/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
