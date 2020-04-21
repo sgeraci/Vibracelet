@@ -97,14 +97,14 @@ bool DefaultBusInit( void ) {
 }
 
 // TEST MACROS ****************//
-#define GPIO_INPUT_TRIG 		5
+#define GPIO_INPUT_TRIG 		16
 #define GPIO_INPUT_REC			17
 #define GPIO_INPUT_PINS 		(1ULL << GPIO_INPUT_REC) | (1ULL << GPIO_INPUT_TRIG)
 //*****************************//
 
 
-#define GPIO_OUTPUT_VIBRATE		23
-#define GPIO_INPUT_SNOOZE		18
+#define GPIO_OUTPUT_VIBRATE		21
+#define GPIO_INPUT_SNOOZE		4
 #define SAMPLE_RATE     		(44100)
 #define NSAMPLES 				((1/10) * SAMPLE_RATE) 			//100-ms
 #define WAVE_FREQ_HZ    		(100)
@@ -113,6 +113,14 @@ bool DefaultBusInit( void ) {
 #define I2S_WS_IO       		25
 #define I2S_DI_IO      			33
 #define I2S_DO_IO       		(-1)
+
+//I2S SLAVE TEST WITH WROVER
+#define I2S_BCK_TEST      		19
+#define I2S_WS_TEST       		5
+#define I2S_DI_TEST    			18
+#define I2S_DO_TEST       		(-1)
+//*************************8
+
 #define SAMPLE_PER_CYCLE 		(SAMPLE_RATE/WAVE_FREQ_HZ)
 
 static xQueueHandle snooze_evt_queue = NULL;
@@ -129,9 +137,13 @@ TaskHandle_t trig_handle = NULL;
 TaskHandle_t dsproc_handle = NULL;
 
 int16_t data16[NSAMPLES];
-int16_t basisSignalsReal[NSAMPLES][5];
-int16_t basisSignalsImag[NSAMPLES][5];
 
+int16_t BasisSignalsReal[NSAMPLES][5];
+int16_t BasisSignalsImag[NSAMPLES][5];
+
+int16_t InputSignalReal[NSAMPLES];
+int16_t InputSignalImag[NSAMPLES];
+//int8_t distanceMatrix[
 
 
 static void IRAM_ATTR snooze_isr_handler(void* arg)
@@ -167,10 +179,6 @@ void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text ) {
 }
 
 
-
-
-
-
 static void listen(void * arg)
 {
 	int32_t data32;
@@ -192,30 +200,13 @@ static void listen(void * arg)
 		
 		data16[n] = (int16_t) (data32 >> 16);// >> 16);
 		n++;
-		
+//		i2s_write(I2S_NUM_1, &data16[n], sizeof(data16[n]), &bytes_read, 0);
 		
 		if(n > NSAMPLES)
 		{	
-//			printf("Passing to dsp: %d\r\n", data16[0]);
-//			xTaskNotify(dsproc_handle, 0, eNoAction);
+			xTaskNotify(dsproc_handle, 0, eNoAction);
 			n = 0;
-			
-			for(int i = 0; i < NSAMPLES; i++)
-			{
-				
-				uint32_t real = 0;
-				uint32_t imag = 0;
-				for(int j = 0; j < NSAMPLES; j++)
-				{
-					real += data16[j] * cos(2 * i * j * PI / NSAMPLES);
-					imag -= data16[j] * sin(2 * i * j * PI / NSAMPLES);
-				}
-			basisSignalsReal[i][0] = real / NSAMPLES;
-			basisSignalsImag[i][0] = imag / NSAMPLES;
-			printf("Working? %d\r\n", basisSignalsReal[i][0]);
-			}
 		}
-			
 	}
 }
 
@@ -271,12 +262,9 @@ static void dsproc(void * arg)
 	{
 		ulTaskNotifyTake(pdFALSE, 1);
 		esp_task_wdt_reset();
-		memcpy(dataCopy, data16, sizeof(data16));
-		
-/*
+		memcpy(dataCopy, data16, sizeof(data16));			
 		for(int i = 0; i < NSAMPLES; i++)
 		{
-			
 			uint32_t real = 0;
 			uint32_t imag = 0;
 			for(int j = 0; j < NSAMPLES; j++)
@@ -284,14 +272,16 @@ static void dsproc(void * arg)
 				real += dataCopy[j] * cos(2 * i * j * PI / NSAMPLES);
 				imag -= dataCopy[j] * sin(2 * i * j * PI / NSAMPLES);
 			}
-		basisSignalsReal[i][0] = real;
-		basisSignalsImag[i][0] = imag;
+			uint32_t mag = sqrt((real * real) + (imag * imag));
+			InputSignalReal[i] = real;//mag;
+			InputSignalImag[i] = imag;//mag;
 		}
-*/
+	printf("Complex Signal: %d + j%d\r\n", InputSignalReal[0], InputSignalImag[0]);
+
+
 		
 		
 	}
-	
 }
 
 static void setup(void)
@@ -366,6 +356,30 @@ static void setup(void)
 	i2s_driver_install(I2S_NUM_0, &i2s_config, 1, i2s_queue);						//configure i2s with the given settings
 	i2s_set_pin(I2S_NUM_0, &pin_config);											//set i2s pins
 
+	//SETTING UP I2S SLAVE FOR READING MIC DATA
+	i2s_config_t i2s_config1 = {
+		.mode = I2S_MODE_MASTER | I2S_MODE_TX,						            //set ESP as master and recieve
+		.sample_rate = SAMPLE_RATE,												//set sample rate
+		.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,							//32 bits per sample
+		.channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,                          	//1 channel, left
+		.communication_format = I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB,	//default format with msb first
+		.dma_buf_count = 10,
+		.dma_buf_len = 8,
+		.use_apll = true,
+
+	};
+	i2s_pin_config_t pin_config1 = {
+		.bck_io_num = I2S_BCK_TEST,
+		.ws_io_num = I2S_WS_TEST,
+		.data_out_num = I2S_DO_TEST,
+		.data_in_num = I2S_DI_TEST
+	};
+	i2s_driver_install(I2S_NUM_1, &i2s_config1, 1, NULL);						//configure i2s with the given settings
+	i2s_set_pin(I2S_NUM_1, &pin_config1);
+	//****************************************************************
+
+
+
 
 	// Set up I2C for LED screen (pulled from library)
 	if ( DefaultBusInit( ) == true ) {
@@ -376,9 +390,7 @@ static void setup(void)
 		#endif
 	}
 	
-//	dsproc_queue = xQueueCreate(5, sizeof(uint32_t));
-
-	
+	dsproc_queue = xQueueCreate(5, sizeof(uint32_t));
 }
 
 
@@ -386,13 +398,11 @@ static void setup(void)
 void app_main(void)
 {
 	setup();
-//	xTaskCreatePinnedToCore(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle, 0);
-	xTaskCreate(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle);
-
+	xTaskCreatePinnedToCore(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle, 0);
 	xTaskCreate(snooze, "snooze", 1024, NULL, 1, &snooze_handle);
 	xTaskCreate(record, "record", 1024, NULL, 3, &record_handle);
 	xTaskCreate(trigger, "trigger", 1024, NULL, 2, &trig_handle);
-//	xTaskCreatePinnedToCore(dsproc, "dsproc", 2048, NULL, tskIDLE_PRIORITY, &dsproc_handle, 1);
+	xTaskCreatePinnedToCore(dsproc, "dsproc", 2048, NULL, tskIDLE_PRIORITY, &dsproc_handle, 1);
 
 }
 
