@@ -8,6 +8,7 @@
 #include "driver/gpio.h"
 #include "driver/dac.h"
 #include "driver/i2s.h"
+#include "esp_dsp.h"
 #include "esp_system.h"
 #include "ssd1306.h"
 #include "ssd1306_draw.h"
@@ -92,7 +93,6 @@ bool DefaultBusInit( void ) {
         assert( SSD1306_I2CMasterInitDefault( ) == true );
         assert( SSD1306_I2CMasterAttachDisplayDefault( &I2CDisplay, I2CDisplayWidth, I2CDisplayHeight, I2CDisplayAddress, I2CResetPin ) == true );
     #endif
-
     return true;
 }
 
@@ -138,12 +138,11 @@ TaskHandle_t dsproc_handle = NULL;
 
 int16_t data16[NSAMPLES];
 
-int16_t BasisSignalsReal[NSAMPLES][5];
-int16_t BasisSignalsImag[NSAMPLES][5];
+int16_t TimeDomainInput[NSAMPLES];
 
-int16_t InputSignalReal[NSAMPLES];
-int16_t InputSignalImag[NSAMPLES];
-//int8_t distanceMatrix[
+int16_t BasisSignals[NSAMPLES][10];
+int16_t InputSignal[NSAMPLES][2];
+int16_t distanceMatrix[5];
 
 
 static void IRAM_ATTR snooze_isr_handler(void* arg)
@@ -165,19 +164,16 @@ static void IRAM_ATTR trig_isr_handler(void* arg)
 
 }
 
-
-
-
 void ScreenSetup( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font ) {
   SSD1306_Clear( DisplayHandle, SSD_COLOR_BLACK );
   SSD1306_SetFont( DisplayHandle, Font );
 }
+
 void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text ) {
     SSD1306_FontDrawAnchoredString( DisplayHandle, TextAnchor_Center, Text, SSD_COLOR_WHITE ); //wasnt recognizing some functions in a header so i just hard coded for now 
     SSD1306_Update( DisplayHandle );
 
 }
-
 
 static void listen(void * arg)
 {
@@ -188,21 +184,18 @@ static void listen(void * arg)
 	for(;;) {
 		esp_task_wdt_reset();
 		i2s_read(I2S_NUM_0, &data32, sizeof(data32), &bytes_read, 0);		//24-bit stored into 32-bit variable
-
-		
 		//data32 = (data32 >> 14);											//invert
 		//data32 = ~data32 & ~0xFFFC0000;										//make the msbs zero after inverting
 		//data32 = data32 + 1;
 		//TAKING OUT TO SEE IF THIS FIXES THE ISSUE WITH THE OUTPUT FOR MIC DATA
 		//data32 = data32 >> 2;
 		//data16[n] = (uint16_t *) data32;
-		
-		
 		data16[n] = (int16_t) (data32 >> 16);// >> 16);
 		n++;
 //		i2s_write(I2S_NUM_1, &data16[n], sizeof(data16[n]), &bytes_read, 0);
-		
-		if(n > NSAMPLES)
+		printf("%x\r\n", data16[0]);
+
+		if(n >= NSAMPLES)
 		{	
 			xTaskNotify(dsproc_handle, 0, eNoAction);
 			n = 0;
@@ -231,10 +224,16 @@ static void record(void * arg)
 	uint32_t io_num;
 	for(;;){
 		xQueueReceive(rec_evt_queue, &io_num, portMAX_DELAY);
+
+
+		
+		
+		
 		
 		SSD1306_Clear(&I2CDisplay, SSD_COLOR_BLACK);
 		SSD1306_Update(&I2CDisplay);
 		DrawText(&I2CDisplay, "Recording");
+		
 		printf("record button pressed...\r\n");
 	}
 }
@@ -260,29 +259,29 @@ static void dsproc(void * arg)
 	int32_t dataCopy[NSAMPLES];
 	for(;;) 
 	{
-		ulTaskNotifyTake(pdFALSE, 1);
 		esp_task_wdt_reset();
-		memcpy(dataCopy, data16, sizeof(data16));			
+		vTaskSuspend(listen_handle);
 		for(int i = 0; i < NSAMPLES; i++)
 		{
-			uint32_t real = 0;
-			uint32_t imag = 0;
-			for(int j = 0; j < NSAMPLES; j++)
-			{
-				real += dataCopy[j] * cos(2 * i * j * PI / NSAMPLES);
-				imag -= dataCopy[j] * sin(2 * i * j * PI / NSAMPLES);
-			}
-			uint32_t mag = sqrt((real * real) + (imag * imag));
-			InputSignalReal[i] = real;//mag;
-			InputSignalImag[i] = imag;//mag;
-		}
-	printf("Complex Signal: %d + j%d\r\n", InputSignalReal[0], InputSignalImag[0]);
+			InputSignal[i][0] = data16[i];		
+		}		
+		vTaskResume(listen_handle);
 
+//		printf("%d\r\n", InputSignal[123][0]);
+//		printf("%f + j%f\r\n", InputSignalReal[0], InputSignalImag[0]);	
+//		for(int i = 0; i < 4; i++)
+//		{
+//			distanceMatrix[i] = 0;
+//			uint16_t realSum = 0;
 
-		
-		
+//			uint16_t imagSum = 0;
+
+//			distanceMatrix[i] = sqrt((realSum * realSum) + (imagSum * imagSum));
+//		}
+//		printf("Distance Matrix:\n\r%f\r\n%f\r\n%f\r\n%f\r\n%f\r\n", distanceMatrix[0], distanceMatrix[1], distanceMatrix[2], distanceMatrix[3], distanceMatrix[4]);
 	}
 }
+
 
 static void setup(void)
 {
@@ -399,9 +398,9 @@ void app_main(void)
 {
 	setup();
 	xTaskCreatePinnedToCore(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle, 0);
-	xTaskCreate(snooze, "snooze", 1024, NULL, 1, &snooze_handle);
-	xTaskCreate(record, "record", 1024, NULL, 3, &record_handle);
-	xTaskCreate(trigger, "trigger", 1024, NULL, 2, &trig_handle);
+	xTaskCreatePinnedToCore(snooze, "snooze", 1024, NULL, 1, &snooze_handle, 0);
+	xTaskCreatePinnedToCore(record, "record", 1024, NULL, 3, &record_handle, 1);
+	xTaskCreatePinnedToCore(trigger, "trigger", 1024, NULL, 2, &trig_handle, 0);
 	xTaskCreatePinnedToCore(dsproc, "dsproc", 2048, NULL, tskIDLE_PRIORITY, &dsproc_handle, 1);
 
 }
