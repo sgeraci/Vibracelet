@@ -136,7 +136,7 @@ TaskHandle_t record_handle = NULL;
 TaskHandle_t trig_handle = NULL;
 TaskHandle_t dsproc_handle = NULL;
 
-int16_t data16[NSAMPLES];
+int16_t data16;
 
 int16_t TimeDomainInput[NSAMPLES];
 
@@ -179,7 +179,6 @@ static void listen(void * arg)
 {
 	int32_t data32;
 	size_t bytes_read;
-	int n = 0;
 	esp_task_wdt_add(NULL);
 	for(;;) {
 		esp_task_wdt_reset();
@@ -190,18 +189,14 @@ static void listen(void * arg)
 		//TAKING OUT TO SEE IF THIS FIXES THE ISSUE WITH THE OUTPUT FOR MIC DATA
 		//data32 = data32 >> 2;
 		//data16[n] = (uint16_t *) data32;
-		data16[n] = (int16_t) (data32 >> 16);// >> 16);
-		n++;
-//		i2s_write(I2S_NUM_1, &data16[n], sizeof(data16[n]), &bytes_read, 0);
-		printf("%x\r\n", data16[0]);
+		data16 = (int16_t) (data32 >> 16);// >> 16);
 
-		if(n >= NSAMPLES)
-		{	
-			xTaskNotify(dsproc_handle, 0, eNoAction);
-			n = 0;
-		}
+	//		i2s_write(I2S_NUM_1, &data16[n], sizeof(data16[n]), &bytes_read, 0);
+//		printf("%x\r\n", data16);
+		xTaskNotify(dsproc_handle, 0, eNoAction);
 	}
 }
+
 
 
 
@@ -256,18 +251,15 @@ static void dsproc(void * arg)
 {	
 	esp_task_wdt_add(NULL);
 	uint32_t io_num;
-	int32_t dataCopy[NSAMPLES];
+	int n = 0;
 	for(;;) 
 	{
 		esp_task_wdt_reset();
-		vTaskSuspend(listen_handle);
-		for(int i = 0; i < NSAMPLES; i++)
-		{
-			InputSignal[i][0] = data16[i];		
-		}		
-		vTaskResume(listen_handle);
+		InputSignal[n][0] = data16;
+		n++;
+		if(n >= NSAMPLES) 		n = 0;
 
-//		printf("%d\r\n", InputSignal[123][0]);
+//		printf("%d\r\n", InputSignal[0][0]);
 //		printf("%f + j%f\r\n", InputSignalReal[0], InputSignalImag[0]);	
 //		for(int i = 0; i < 4; i++)
 //		{
@@ -398,9 +390,9 @@ void app_main(void)
 {
 	setup();
 	xTaskCreatePinnedToCore(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle, 0);
-	xTaskCreatePinnedToCore(snooze, "snooze", 1024, NULL, 1, &snooze_handle, 0);
-	xTaskCreatePinnedToCore(record, "record", 1024, NULL, 3, &record_handle, 1);
-	xTaskCreatePinnedToCore(trigger, "trigger", 1024, NULL, 2, &trig_handle, 0);
+	xTaskCreate(snooze, "snooze", 1024, NULL, 1, &snooze_handle);
+	xTaskCreate(record, "record", 1024, NULL, 3, &record_handle);
+	xTaskCreate(trigger, "trigger", 1024, NULL, 2, &trig_handle);
 	xTaskCreatePinnedToCore(dsproc, "dsproc", 2048, NULL, tskIDLE_PRIORITY, &dsproc_handle, 1);
 
 }
