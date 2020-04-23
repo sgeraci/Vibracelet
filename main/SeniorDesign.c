@@ -77,7 +77,7 @@
  * 	 and dual core processes can be utilized to help with computational
  * 	 speed.
  ********************************END*************************************/
-
+/*
 #define USE_I2C_DISPLAY
 #if defined USE_I2C_DISPLAY
     static const int I2CDisplayAddress = 0x3C;    
@@ -95,7 +95,7 @@ bool DefaultBusInit( void ) {
     #endif
     return true;
 }
-
+*/
 // TEST MACROS ****************//
 #define GPIO_INPUT_TRIG 		16
 #define GPIO_INPUT_REC			17
@@ -154,7 +154,7 @@ static void IRAM_ATTR trig_isr_handler(void* arg)
 	uint32_t gpio_num = (uint32_t) arg;
 	xQueueSendFromISR(trig_evt_queue, &gpio_num, NULL);
 }
-
+/*
 void ScreenSetup( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font ) 
 {
   SSD1306_Clear( DisplayHandle, SSD_COLOR_BLACK );
@@ -166,7 +166,7 @@ void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text )
     SSD1306_FontDrawAnchoredString( DisplayHandle, TextAnchor_Center, Text, SSD_COLOR_WHITE ); //wasnt recognizing some functions in a header so i just hard coded for now 
     SSD1306_Update( DisplayHandle );
 }
-
+*/
 static void listen(void * arg)
 {
 	int32_t data32;
@@ -334,12 +334,12 @@ static void setup(void)
 
 
 	// Set up I2C for LED screen (pulled from library)
-	if ( DefaultBusInit( ) == true ) {
-		const char* text = "PROGRAM START";
-		#if defined USE_I2C_DISPLAY
-			ScreenSetup( &I2CDisplay, &Font_droid_sans_mono_7x13);
-			DrawText( &I2CDisplay, text);
-		#endif
+//	if ( DefaultBusInit( ) == true ) {
+//		const char* text = "PROGRAM START";
+//		#if defined USE_I2C_DISPLAY
+//			ScreenSetup( &I2CDisplay, &Font_droid_sans_mono_7x13);
+//			DrawText( &I2CDisplay, text);
+//		#endif
 	}
 	
 	dsproc_queue = xQueueCreate(5, sizeof(uint32_t));
