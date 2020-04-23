@@ -8,13 +8,13 @@
 #include "driver/gpio.h"
 #include "driver/dac.h"
 #include "driver/i2s.h"
-#include "esp_dsp.h"
 #include "esp_system.h"
 #include "ssd1306.h"
 #include "ssd1306_draw.h"
 #include "ssd1306_font.h"
 #include "ssd1306_default_if.h"
 #include "DrawTask.h"
+#include "esp_dsp.h"
 #include <math.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -107,21 +107,13 @@ bool DefaultBusInit( void ) {
 #define GPIO_INPUT_SNOOZE		4
 #define SAMPLE_RATE     		(44100)
 #define NSAMPLES 				((1/10) * SAMPLE_RATE) 			//100-ms
-#define WAVE_FREQ_HZ    		(100)
 #define PI              		(3.14159265)
 #define I2S_BCK_IO      		32
 #define I2S_WS_IO       		25
 #define I2S_DI_IO      			33
 #define I2S_DO_IO       		(-1)
 
-//I2S SLAVE TEST WITH WROVER
-#define I2S_BCK_TEST      		19
-#define I2S_WS_TEST       		5
-#define I2S_DI_TEST    			18
-#define I2S_DO_TEST       		(-1)
-//*************************8
 
-#define SAMPLE_PER_CYCLE 		(SAMPLE_RATE/WAVE_FREQ_HZ)
 
 static xQueueHandle snooze_evt_queue = NULL;
 static xQueueHandle rec_evt_queue = NULL;
@@ -161,18 +153,18 @@ static void IRAM_ATTR trig_isr_handler(void* arg)
 {
 	uint32_t gpio_num = (uint32_t) arg;
 	xQueueSendFromISR(trig_evt_queue, &gpio_num, NULL);
-
 }
 
-void ScreenSetup( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font ) {
+void ScreenSetup( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font ) 
+{
   SSD1306_Clear( DisplayHandle, SSD_COLOR_BLACK );
   SSD1306_SetFont( DisplayHandle, Font );
 }
 
-void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text ) {
+void DrawText( struct SSD1306_Device* DisplayHandle, const char* Text ) 
+{
     SSD1306_FontDrawAnchoredString( DisplayHandle, TextAnchor_Center, Text, SSD_COLOR_WHITE ); //wasnt recognizing some functions in a header so i just hard coded for now 
     SSD1306_Update( DisplayHandle );
-
 }
 
 static void listen(void * arg)
@@ -191,9 +183,8 @@ static void listen(void * arg)
 		//data16[n] = (uint16_t *) data32;
 		data16 = (int16_t) (data32 >> 16);// >> 16);
 
-	//		i2s_write(I2S_NUM_1, &data16[n], sizeof(data16[n]), &bytes_read, 0);
 //		printf("%x\r\n", data16);
-		xTaskNotify(dsproc_handle, 0, eNoAction);
+//		xTaskNotify(dsproc_handle, 0, eNoAction);
 	}
 }
 
@@ -209,7 +200,7 @@ static void snooze(void * arg)
 		printf("SNOOZE PRESSED!\n");
 		gpio_set_level(GPIO_OUTPUT_VIBRATE, 0);							//turn off vibrate
 		SSD1306_Clear(&I2CDisplay, SSD_COLOR_BLACK);
-		SSD1306_Update(&I2CDisplay);
+//		SSD1306_Update(&I2CDisplay);
 	}
 
 }
@@ -219,15 +210,10 @@ static void record(void * arg)
 	uint32_t io_num;
 	for(;;){
 		xQueueReceive(rec_evt_queue, &io_num, portMAX_DELAY);
-
-
-		
-		
-		
 		
 		SSD1306_Clear(&I2CDisplay, SSD_COLOR_BLACK);
-		SSD1306_Update(&I2CDisplay);
-		DrawText(&I2CDisplay, "Recording");
+//		SSD1306_Update(&I2CDisplay);
+//		DrawText(&I2CDisplay, "Recording");
 		
 		printf("record button pressed...\r\n");
 	}
@@ -240,8 +226,8 @@ static void trigger(void * arg)
 		xQueueReceive(trig_evt_queue, &io_num, portMAX_DELAY);
 		printf("trigger button pressed...\r\n");
 		SSD1306_Clear(&I2CDisplay, SSD_COLOR_BLACK);
-		SSD1306_Update(&I2CDisplay);
-		DrawText(&I2CDisplay, "Triggered");
+//		SSD1306_Update(&I2CDisplay);
+//		DrawText(&I2CDisplay, "Triggered");
 		gpio_set_level(GPIO_OUTPUT_VIBRATE, 1);							//turn on vibrate
 		
 	}
@@ -257,10 +243,8 @@ static void dsproc(void * arg)
 		esp_task_wdt_reset();
 		InputSignal[n][0] = data16;
 		n++;
-		if(n >= NSAMPLES) 		n = 0;
 
-//		printf("%d\r\n", InputSignal[0][0]);
-//		printf("%f + j%f\r\n", InputSignalReal[0], InputSignalImag[0]);	
+		printf("%d\r\n", InputSignal[n][0]);
 //		for(int i = 0; i < 4; i++)
 //		{
 //			distanceMatrix[i] = 0;
@@ -311,7 +295,7 @@ static void setup(void)
 
 	
 	//install gpio isr service
-	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL2);
+	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1);
 
 	//hook isr handler for specific gpio pin
 	gpio_isr_handler_add(GPIO_INPUT_SNOOZE, snooze_isr_handler, (void*) GPIO_INPUT_SNOOZE);
@@ -347,29 +331,6 @@ static void setup(void)
 	i2s_driver_install(I2S_NUM_0, &i2s_config, 1, i2s_queue);						//configure i2s with the given settings
 	i2s_set_pin(I2S_NUM_0, &pin_config);											//set i2s pins
 
-	//SETTING UP I2S SLAVE FOR READING MIC DATA
-	i2s_config_t i2s_config1 = {
-		.mode = I2S_MODE_MASTER | I2S_MODE_TX,						            //set ESP as master and recieve
-		.sample_rate = SAMPLE_RATE,												//set sample rate
-		.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,							//32 bits per sample
-		.channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,                          	//1 channel, left
-		.communication_format = I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB,	//default format with msb first
-		.dma_buf_count = 10,
-		.dma_buf_len = 8,
-		.use_apll = true,
-
-	};
-	i2s_pin_config_t pin_config1 = {
-		.bck_io_num = I2S_BCK_TEST,
-		.ws_io_num = I2S_WS_TEST,
-		.data_out_num = I2S_DO_TEST,
-		.data_in_num = I2S_DI_TEST
-	};
-	i2s_driver_install(I2S_NUM_1, &i2s_config1, 1, NULL);						//configure i2s with the given settings
-	i2s_set_pin(I2S_NUM_1, &pin_config1);
-	//****************************************************************
-
-
 
 
 	// Set up I2C for LED screen (pulled from library)
@@ -389,11 +350,11 @@ static void setup(void)
 void app_main(void)
 {
 	setup();
-	xTaskCreatePinnedToCore(listen, "listen", 4096, NULL, tskIDLE_PRIORITY, &listen_handle, 0);
+	xTaskCreatePinnedToCore(listen, "listen", 2048, NULL, tskIDLE_PRIORITY, &listen_handle, 0);
 	xTaskCreate(snooze, "snooze", 1024, NULL, 1, &snooze_handle);
 	xTaskCreate(record, "record", 1024, NULL, 3, &record_handle);
 	xTaskCreate(trigger, "trigger", 1024, NULL, 2, &trig_handle);
-	xTaskCreatePinnedToCore(dsproc, "dsproc", 2048, NULL, tskIDLE_PRIORITY, &dsproc_handle, 1);
+	xTaskCreatePinnedToCore(dsproc, "dsproc", 2048, NULL, 1, &dsproc_handle, 1);
 
 }
 
