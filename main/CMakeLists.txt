@@ -1,2 +1,2 @@
-idf_component_register(SRCS "SeniorDesign.c"
+idf_component_register(SRCS "Vibracelet.c"
                     INCLUDE_DIRS ".")
